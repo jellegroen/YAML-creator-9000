@@ -7,13 +7,14 @@ from pathlib import Path
 import re
 import tkinter as tk
 from tkinter import font as tkfont
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 
 # Save templates under %APPDATA%. If APPDATA is unavailable, use the home folder.
 # The / operator on Path objects joins folder and file names.
 SETTINGS = Path(os.environ.get('APPDATA', str(Path.home()))) / 'YAMLcreator9000' / 'characters.json'
 TITLE_DIRECTIVE = object()
+PRESET_DIRECTIVE = object()
 
 FONT_FILE = Path(__file__).resolve().with_name('OMORI_GAME2.ttf')
 FONT_FAMILY = 'OMORI_GAME'
@@ -66,6 +67,23 @@ def parse_dialogue(source):
             else:
                 messages.append((TITLE_DIRECTIVE, prefix))
             continue
+        instruction = re.fullmatch(
+            r'@preset(?:\s+(.*))?', line.strip(), flags=re.IGNORECASE
+        )
+        if instruction:
+            character, separator, preset = (
+                instruction.group(1) or ''
+            ).rpartition('|')
+            character = character.strip()
+            preset = preset.strip().casefold()
+
+            if not separator or not character or not re.fullmatch(r'[\w-]+', preset):
+                errors.append(
+                    f'Line {number}: use @preset Character | preset_name'
+                  )
+            else:
+                messages.append((PRESET_DIRECTIVE, (character, preset)))
+            continue
         name, separator, text = line.partition(':')
         if not separator or not name.strip():
             errors.append(f'Line {number}: expected Character: message')
@@ -86,15 +104,32 @@ def render_yaml(messages, templates):
     # resets the counter. All state is fresh on each conversion/preview refresh.
     prefix, count = None, 0
     keys, blocks = set(), []
+    active_presets = {}
     for name, text in messages:
         if name is None:
             blocks.append(text)
             continue
         if name is TITLE_DIRECTIVE:
             prefix, count = text, 0
-            continue  
+            continue
+        
+        if name is PRESET_DIRECTIVE:
+            character, preset = text
+            identity = character.casefold()
+
+            if preset == 'default':
+                active_presets.pop(identity, None)
+            else:
+                preset_key = f'{identity}::{preset}'
+                if preset_key not in templates:
+                    raise ValueError(
+                        f'{character}: preset "{preset}" does not exist. '
+                        'Create it in Character settings.'
+                    )
+                active_presets[identity] = preset_key
+            continue
         identity = name.casefold()
-        template = templates[identity]
+        template = templates[active_presets.get(identity, identity)]
         if prefix is None:
             prefix = template['prefix']
         if not re.fullmatch(r'[\w-]+', prefix, flags=re.UNICODE):
@@ -431,13 +466,79 @@ class App(tk.Tk):
         for col in ('#0', 'prefix', 'faceset'):
             tree.column(col, width=170)
         tree.pack(fill='both', expand=True)
-
+        
         def refresh():
             """Rebuild the table using the current templates, sorted by identity."""
             # * expands the child IDs into separate arguments for delete().
             tree.delete(*tree.get_children())
             for identity, template in sorted(self.templates.items()):
-                tree.insert('', 'end', iid=identity, text=template['name'], values=(template['prefix'], 'Text only' if template['text_only'] else template['faceset']))
+                preset_name = identity.partition('::')[2] or 'default'
+                tree.insert(
+                    '', 'end',
+                    iid=identity,
+                    text=f'{template["name"]} [{preset_name}]',
+                    values=(
+                        template['prefix'],
+                        'Text only' if template['text_only'] else template['faceset']
+                    )
+                )
+
+        def new_preset():
+            selected = tree.selection()
+            if not selected:
+                messagebox.showinfo(
+                    'Select a character',
+                    'Select a character to copy into a new preset.',
+                    parent=window
+                )
+                return
+
+            identity = selected[0]
+            original = self.templates[identity]
+            character_identity = identity.split('::', 1)[0]
+
+            preset_name = simpledialog.askstring(
+                'New preset',
+                f'Name the new preset for {original["name"]}:',
+                parent=window
+            )
+            if preset_name is None:
+                return
+
+            preset_name = preset_name.strip().casefold()
+            if (
+                preset_name == 'default'
+                or not re.fullmatch(r'[\w-]+', preset_name)
+            ):
+                messagebox.showerror(
+                    'Invalid preset name.',
+                    'Use letters, numbers, underscores or hyphens. '
+                    '"default" is reserved.',
+                    parent=window
+                )
+                return
+
+            preset_key = f'{character_identity}::{preset_name}'
+            if preset_key in self.templates:
+                messagebox.showerror(
+                    'Preset already exists',
+                    'Choose another name, or select that preset and click edit selected.',
+                    parent=window
+                )
+                return
+
+            dialog = TemplateDialog(
+                window,
+                original['name'],
+                original.copy()
+            )
+            if dialog.result is None:
+                return
+
+            self.templates[preset_key] = dialog.result
+            self.persist()
+            refresh()
+            self.convert(False)
 
         def edit():
             """Edit the selected template, save it, and refresh the list/preview."""
@@ -464,6 +565,7 @@ class App(tk.Tk):
 
         buttons = ttk.Frame(frame)
         buttons.pack(fill='x', pady=(12, 0))
+        ttk.Button(buttons, text='New preset', command=new_preset).pack(side='left', padx=(0, 8))
         ttk.Button(buttons, text='Edit selected', command=edit).pack(side='left')
         ttk.Button(buttons, text='Remove selected', command=remove).pack(side='left', padx=8)
         ttk.Button(buttons, text='Close', command=window.destroy).pack(side='right')
