@@ -139,13 +139,30 @@ def render_yaml(messages, templates):
         if key in keys:
             raise ValueError(f'Duplicate key {key}. Use a different @title name for each new section.')
         keys.add(key)
-        fields = [f'{key}:']
-        if not template['text_only']:
-            if not template['faceset'].strip():
-                raise ValueError(f'{name}: enter a faceset or select Text only in Character settings.')
-            fields += [f'  faceset: {template["faceset"]}', '  faceindex:']
-        fields.append(f'  text: {text}')
-        blocks.append('\n'.join(fields))
+        layout = template.get('yaml_template', '')
+
+        if layout.strip():
+            values = {'message_id': key, 'text': text}
+            block = re.sub(
+                r'\{(message_id|text)\}',
+                lambda match: values[match.group(1)],
+                layout
+            )
+            blocks.append(block.rstrip('\n'))
+        else:
+            fields = [f'{key}:']
+            if not template['text_only']:
+                if not template['faceset'].strip():
+                    raise ValueError(
+                        f'{name}: enter a faceset or select '
+                        'Text only in Character settings.'
+                    )
+                fields += [
+                    f'  faceset: {template["faceset"]}',
+                '  faceindex:'
+                ]
+            fields.append(f'  text: {text}')
+            blocks.append('\n'.join(fields))
     return '\n\n'.join(blocks) + '\n'
 
 
@@ -176,8 +193,12 @@ class TemplateDialog(tk.Toplevel):
         self.face_entry.grid(row=2, column=1, pady=6)
         ttk.Checkbutton(body, text='Text only', variable=self.text_only, command=self.toggle).grid(row=3, column=1, sticky='w', pady=8)
         ttk.Label(body, text='Faceindex is left blank for manual editing.').grid(row=4, column=0, columnspan=2, sticky='w', pady=(4, 20))
+        ttk.Label(body, text='Custom YAML, leave blank for standard output.').grid(row=5, column=0, columnspan=2, sticky='w', pady=(0, 6))
+        self.yaml_template = tk.Text(body, width=50, height=8, wrap='none', undo=True, font=('Consolas', 12), background=COLORS['field'], foreground=COLORS['ink'], insertbackground=COLORS['accent'])
+        self.yaml_template.grid(row=6, column=0, columnspan=2, sticky='ew', pady=(0, 16))
+        self.yaml_template.insert( '1.0', template.get('yaml_template', ''))
         buttons = ttk.Frame(body)
-        buttons.grid(row=5, column=0, columnspan=2, sticky='e')
+        buttons.grid(row=7, column=0, columnspan=2, sticky='e')
         # command names the function to run when a button is clicked.
         # destroy closes the window. pack places these buttons side by side.
         ttk.Button(buttons, text='Cancel', command=self.destroy).pack(side='left', padx=4)
@@ -187,7 +208,7 @@ class TemplateDialog(tk.Toplevel):
         # bind attaches keyboard actions. lambda is a short unnamed function;
         # it accepts Tkinter's event argument and calls the action we want.
         self.bind('<Escape>', lambda event: self.destroy())
-        self.bind('<Return>', lambda event: self.save())
+        self.bind('<Control-Return>', lambda event: self.save())
         self.toggle()
         # Keep interaction in this dialog until it closes. wait_window pauses
         # the caller while Tkinter continues responding to dialog actions.
@@ -207,15 +228,41 @@ class TemplateDialog(tk.Toplevel):
 
     def save(self):
         """Check the entered values, return the template, then close the dialog."""
-        prefix, faceset = self.prefix.get().strip(), self.faceset.get().strip()
+        prefix = self.prefix.get().strip()
+        faceset = self.faceset.get().strip()
+        layout = self.yaml_template.get('1.0', 'end-1c')
+
         if not re.fullmatch(r'[\w-]+', prefix, flags=re.UNICODE):
-            messagebox.showerror('Check key prefix', 'Use letters, numbers, underscores or hyphens.', parent=self)
+            messagebox.showerror(
+                'Check key prefix',
+                'Use letters, numbers, underscores or hyphens. ',
+                parent=self
+            )
             return
-        if not self.text_only.get() and not faceset:
-            messagebox.showerror('Faceset needed', 'Enter a faceset, or select Text only.', parent=self)
+
+        if layout.strip() and layout.count('{message_id}') != 1:
+            messagebox.showerror(
+                'Check custom YAML',
+                'Include {message_id} exactly once.',
+                parent=self
+            )
             return
-        # Only valid values reach this point. The caller saves this dictionary.
-        self.result = {'name': self.name, 'prefix': prefix, 'faceset': faceset, 'text_only': self.text_only.get()}
+
+        if not layout.strip() and not self.text_only.get() and not faceset:
+            messagebox.showerror(
+                'Faceset needed',
+                'Enter a faceset, or select text only.',
+                parent=self
+            )
+            return
+
+        self.result = {
+            'name': self.name,
+            'prefix': prefix,
+            'faceset': faceset,
+            'text_only': self.text_only.get(),
+            'yaml_template': layout
+        }
         self.destroy()
 
 
@@ -224,7 +271,7 @@ class App(tk.Tk):
     def __init__(self):
         load_app_font()
         super().__init__()
-        self.title('OMORI Dialogue Converter')
+        self.title('YAML creator 9000')
         self.geometry('1120x720')
         self.minsize(820, 520)
         self.configure(background=COLORS['surface'])
@@ -453,7 +500,7 @@ class App(tk.Tk):
         window = tk.Toplevel(self)
         window.configure(background=COLORS['surface'])
         window.title('Saved character settings')
-        window.geometry('640x400')
+        window.geometry('640x600')
         window.transient(self)
         frame = ttk.Frame(window, padding=20)
         frame.pack(fill='both', expand=True)
