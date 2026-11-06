@@ -333,7 +333,7 @@ class App(tk.Tk):
         header.pack(fill='x', pady=(0, 8))
         ttk.Label(header, text='YAML CREATOR 9000', style='Heading.TLabel').pack(side='left')
         ttk.Button(header, text='Character settings', command=self.manage_characters).pack(side='right')
-        ttk.Label(outer, text='One Character: message per line. Use @title (name) to switch entry titles.').pack(anchor='w', pady=(0, 18))
+        ttk.Label(outer, text='One Character: message per line. Use @title (name) to switch entry titles and @preset (name) to switch presets.').pack(anchor='w', pady=(0, 18))
         # A draggable divider separates the editable input and read-only preview.
         panes = ttk.Panedwindow(outer, orient='horizontal')
         panes.pack(fill='both', expand=True)
