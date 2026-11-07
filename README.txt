@@ -1,4 +1,4 @@
-OMORI Dialogue Converter
+YAMLcreator9000
 
 Double-click Start.cmd to open the app
 install Python 3 with Tcl/Tk support and add it to PATH.
@@ -66,7 +66,7 @@ saved character. Edit them later through Character settings.
 
 
 Settings are saved in:
-  %APPDATA%\OmoriDialogueConverter\characters.json
+  %APPDATA%\YAMLcreator9000\characters.json
 Only character settings are saved. Pasted dialogue is not saved automatically.
 Copy this JSON file to back up or transfer your templates.
 
