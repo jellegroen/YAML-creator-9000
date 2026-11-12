@@ -168,12 +168,20 @@ def render_yaml(messages, templates):
 
 class TemplateDialog(tk.Toplevel):
     """A smaller window for setting up or editing one character."""
-    def __init__(self, parent, name, template, allow_skip=False, preset_name=None):
+    def __init__(self, parent, name, template, allow_skip=False, preset_name=None, creating=False):
         super().__init__(parent)
         self.configure(background=COLORS['surface'])
-        self.title(
-            f'Character settings: {name} [{preset_name}]'
-            if preset_name else f'Character settings: {name}')
+
+        is_new = creating or allow_skip
+        kind = 'preset' if preset_name is not None else 'character'
+        action = 'New' if is_new else 'Edit'
+
+        dialog_title = f'{action} {kind}: {name}'
+        if preset_name is not None:
+            dialog_title += f' | {preset_name}'
+
+        save_label = f'Create {kind}' if is_new else f'Save {kind}'
+        self.title(dialog_title)
         self.resizable(False, False)
         self.transient(parent)
         # The caller checks result after the dialog closes. None means cancelled.
@@ -182,7 +190,7 @@ class TemplateDialog(tk.Toplevel):
         # Frames group controls. grid positions them in rows and columns.
         body = ttk.Frame(self, padding=24)
         body.grid(sticky='nsew')
-        ttk.Label(body, text=name, style='Heading.TLabel').grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 16))
+        ttk.Label(body, text=dialog_title, style='Heading.TLabel').grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 16))
         # Tk variables connect input controls to values readable with .get().
         self.prefix = tk.StringVar(value=template['prefix'])
         self.faceset = tk.StringVar(value=template['faceset'])
@@ -206,7 +214,7 @@ class TemplateDialog(tk.Toplevel):
         ttk.Button(buttons, text='Cancel', command=self.destroy).pack(side='left', padx=4)
         if allow_skip:
             ttk.Button(buttons, text='Skip setup', command=self.skip).pack(side='left', padx=4)
-        ttk.Button(buttons, text='Save character', command=self.save).pack(side='left', padx=4)
+        ttk.Button(buttons, text=save_label, command=self.save).pack(side='left', padx=4)
         # bind attaches keyboard actions. lambda is a short unnamed function;
         # it accepts Tkinter's event argument and calls the action we want.
         self.bind('<Escape>', lambda event: self.destroy())
@@ -274,7 +282,7 @@ class App(tk.Tk):
         load_app_font()
         super().__init__()
         self.title('YAML creator 9000')
-        self.geometry('1120x720')
+        self.geometry('1200x900')
         self.minsize(820, 520)
         self.configure(background=COLORS['surface'])
         # Tk named fonts also cover entries, menus and Tk-managed popup text.
@@ -485,7 +493,7 @@ class App(tk.Tk):
                     identity, default_template(character)
                 )
                 dialog = TemplateDialog(
-                    self, character, base.copy(), preset_name=preset
+                    self, character, base.copy(), preset_name=preset, creating=True
                 )
 
                 if dialog.result is None:
@@ -617,7 +625,9 @@ class App(tk.Tk):
             dialog = TemplateDialog(
                 window,
                 original['name'],
-                original.copy()
+                original.copy(),
+                preset_name=preset_name,
+                creating=True
             )
             if dialog.result is None:
                 return
@@ -634,7 +644,8 @@ class App(tk.Tk):
                 return
             identity = selected[0]
             template = self.templates[identity]
-            dialog = TemplateDialog(window, template['name'], template)
+            preset_name = identity.partition('::')[2] or None
+            dialog = TemplateDialog(window, template['name'], template, preset_name=preset_name)
             if dialog.result:
                 self.templates[identity] = dialog.result
                 self.persist()
