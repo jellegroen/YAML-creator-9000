@@ -12,7 +12,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 # Save templates under %APPDATA%. If APPDATA is unavailable, use the home folder.
 # The / operator on Path objects joins folder and file names.
-SETTINGS = Path(os.environ.get('APPDATA', str(Path.home()))) / 'YAMLcreator9000' / 'characters.json'
+SETTINGS = Path(__file__).resolve().with_name('characters.json')
 TITLE_DIRECTIVE = object()
 PRESET_DIRECTIVE = object()
 
