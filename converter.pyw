@@ -168,10 +168,12 @@ def render_yaml(messages, templates):
 
 class TemplateDialog(tk.Toplevel):
     """A smaller window for setting up or editing one character."""
-    def __init__(self, parent, name, template, allow_skip=False):
+    def __init__(self, parent, name, template, allow_skip=False, preset_name=None):
         super().__init__(parent)
         self.configure(background=COLORS['surface'])
-        self.title(f'Character settings: {name}')
+        self.title(
+            f'Character settings: {name} [{preset_name}]'
+            if preset_name else f'Character settings: {name}')
         self.resizable(False, False)
         self.transient(parent)
         # The caller checks result after the dialog closes. None means cancelled.
@@ -458,6 +460,44 @@ class App(tk.Tk):
                 # Save both configured templates and skipped text-only templates.
                 self.templates[name.casefold()] = dialog.result
                 self.persist()
+            for marker, value in messages:
+                if marker is not PRESET_DIRECTIVE:
+                    continue
+
+                character, preset = value
+                if preset == 'default':
+                    continue
+
+                identity = character.casefold()
+                preset_key = f'{identity}::{preset}'
+                if preset_key in self.templates:
+                    continue
+
+                if not interactive:
+                    self.set_preview('')
+                    self.status.set(
+                    f'New preset "{preset}" for {character}. '
+                    'Click Convert / refresh to create it.'
+                )
+                    return False
+
+                base = self.templates.get(
+                    identity, default_template(character)
+                )
+                dialog = TemplateDialog(
+                    self, character, base.copy(), preset_name=preset
+                )
+
+                if dialog.result is None:
+                    self.set_preview('')
+                    self.status.set(
+                        'Preset setup cancelled.'
+                    )
+                    return False
+
+                self.templates[preset_key] = dialog.result
+                self.persist()
+
             result = render_yaml(messages, self.templates)
         # Handle input/template errors from parse_dialogue and render_yaml.
         except ValueError as error:
